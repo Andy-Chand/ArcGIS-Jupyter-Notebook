@@ -1,0 +1,54 @@
+#------------------------------------------------------
+# Program: Sample 2
+# Author: Andy Chand
+# Version: 1.0
+# Date: Jan. 19, 2021
+# Purpose: Calculate the Z-Score
+# Dependencies: arcpy, numpy
+#------------------------------------------------------
+
+import arcpy, numpy
+
+# ZScore Function
+def ZED(x, m, sd): # x = observed value, m = mean, sd = std. dev.
+    zscore = (x - m)/ sd
+    return zscore
+    
+
+# Just listing the feature class works here because it was imported into the default/home database
+inFC = "CensusBlocks"
+# Pulls from the CensusBlocks feature class
+inField = "PTDwell"
+
+# Generate the mean and standard deviation of the table
+# Access the Feature Class Table Cursor SEARCH Cursor
+mySCursor = arcpy.da.SearchCursor(inFC, [inField, "ZScore"])
+numArray = []
+
+for row in mySCursor:
+    #Add the values to an array
+    numArray.append(row[0])
+    
+#Use the array to get the mean and the SD
+theMean = numpy.mean(numArray) #67.7
+theSD = numpy.std(numArray) #120.8
+
+#print (theMean)
+#print (theSD)
+
+#Add Z-Score Field
+arcpy.management.AddField(inFC, "ZScore", "DOUBLE")
+
+# Access the Feature Class Table Cursor UPDATE Cursor
+myCursor = arcpy.da.UpdateCursor(inFC, [inField, "ZScore"])
+
+# Loop through the table one record at a time
+for row in myCursor:
+    zs = ZED (row[0], theMean, theSD)
+
+# Update the Z-Score field
+    row[1] = zs
+    myCursor.updateRow(row)
+
+# Clean up
+myCursor = None 
