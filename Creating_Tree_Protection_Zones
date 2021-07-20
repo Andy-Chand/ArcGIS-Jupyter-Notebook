@@ -1,0 +1,80 @@
+#------------------------------------------------------
+# Program: Creating Tree Protection Zones with Diameter at Breast Height
+# Author: Andy Chand
+# Version: 1.0
+# Date: Jan. 19, 2021
+# Purpose: Takes in points and measured DBH's (Diameter at breast height) of trees to find 
+# and then apply a tree protection zone (TPZ) by dissolving overlapping zones
+# Dependencies: arcpy
+#------------------------------------------------------
+
+import arcpy
+
+# Listing the feature class and attribute table - used instead of a new Database
+inFC = "StudyAreaTrees"
+inField = "DBH"
+inStudyArea = "StudyArea"
+
+outTreeBuff = "Tree_Buffer"
+
+# Calculates the buffer area using the DBH and the tree technical manual provided by Guelph
+def BArea(DBH):
+    if DBH < 10:
+        BuffArea = "1.2 METERS"
+    elif DBH >= 10 and DBH <= 29:
+        BuffArea = "1.8 METERS"
+    elif DBH >= 30 and DBH <= 40:
+        BuffArea = "2.4 METERS"
+    elif DBH >= 41 and DBH <= 50:
+        BuffArea = "3.0 METERS"
+    elif DBH >= 51 and DBH <= 60:
+        BuffArea = "3.6 METERS"
+    elif DBH >= 61 and DBH <= 70:
+        BuffArea = "4.2 METERS"
+    elif DBH >= 71 and DBH <= 80:
+        BuffArea = "4.8 METERS"
+    elif DBH >= 81 and DBH <= 90:
+        BuffArea = "5.4 METERS"
+    elif DBH >= 91 and DBH <= 100:
+        BuffArea = "1.8 METERS"
+    elif DBH > 100 and DBH < 999:
+        BuffCalc = (DBH * 6)/100
+        BuffArea = str(BuffCalc) + " METERS"
+    else:
+        BuffArea = "0 METERS"
+    
+    if DBH > 0:
+        return BuffArea
+    else:
+        return 0
+
+#Adds buffer field that will hold the buffer area
+arcpy.management.AddField(inFC, "Buffer_Area", "TEXT")
+arcpy.management.AddField(inFC, "Overlap", "TEXT")
+
+myCursor = arcpy.da.UpdateCursor(inFC, [inField, "Buffer_Area"])
+
+# Runs a loop to go through the list and calculate the buffer area using the function above
+for row in myCursor:
+    row[1] = BArea (row[0])
+    myCursor.updateRow(row)
+    
+# Clean up
+myCursor = None 
+
+# Buffers the points based on attribute tables
+arcpy.analysis.Buffer(inFC, outTreeBuff, "Buffer_Area")
+
+myCursor = arcpy.da.UpdateCursor(inFC, [inField, "Overlap"])
+
+# Runs a loop to go through the list and calculate the buffer area using the function above
+for row in myCursor:
+    if (arcpy.analysis.CountOverlappingFeatures(outTreeBuff, inStudyArea) > 1):
+        row[1] = "True"
+        myCursor.updateRow(row)
+    else:
+        row[1] = "False"
+        myCursor.updateRow(row)
+    
+# Clean up
+myCursor = None 
