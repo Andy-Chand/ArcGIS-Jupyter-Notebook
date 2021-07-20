@@ -1,0 +1,21 @@
+#------------------------------------------------------
+# Program: Sample 1
+# Author: Andy Chand
+# Version: 1.0
+# Date: Jan. 19, 2021
+# Purpose: Calculate the distance between two points
+#------------------------------------------------------
+
+def TwoPointDistance (pt1, pt2):
+    if all(isinstance (x, (int, float)) for x in pt1) and all(isinstance (i, (int, float)) for i in pt2) and len(pt1) == 2 and len(pt2) == 2:
+        answer = round(math.sqrt((pt1[0] ** 2 + pt2[0] ** 2) + (pt1[1] ** 2 + pt2[1] ** 2)), 2)
+    else:
+        answer = "ERROR! Both arguments must be numeric and only have 2 values"
+    return answer
+
+#List array
+Coord1 = [3, 6]
+Coord2 = [6, 19]
+
+aVal = TwoPointDistance (Coord1, Coord2)
+print (aVal)
