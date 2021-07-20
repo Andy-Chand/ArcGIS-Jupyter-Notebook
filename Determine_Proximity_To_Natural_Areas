@@ -1,0 +1,90 @@
+#------------------------------------------------------
+# Program: METH6004 Assign1B Task 1
+# Author: Andy Chand
+# Version: 1.0
+# Date: Feb. 09, 2021
+# Purpose: Determining proximity to natural areas/ corridor creation
+# Dependencies: arcpy
+#------------------------------------------------------
+    
+import arcpy
+
+# Set your variables
+InForests = "Forests"
+InRoads = "Roads"
+InMunicipalBnd = "MunicipalBnd"
+InSymbology = "MunicipalClip.lyrx"
+
+# Temporary Feature Classes
+ForestSelect = "memory\\LargeForests"
+CenterPolygon = "memory\\ForestPlotCentroid"
+CentroidBuffer = "memory\\ForestCentroidBuff"
+FlatPolygon = "memory\\Forest_FlatPoly"
+CenterFlatPoint = "memory\\FlatForestPoints"
+SpatialJoinPoint = "memory\\Forest_SpatialJoin"
+EraseFeature1 = "memory\\ErasedForests"
+EraseFeature2 = "memory\\ErasedForestsAndRoads"
+RoadBuffer = "memory\\Roads30mBuff"
+
+#Final Feature Layer that needs to be Symbolized
+OutMunicipalBnd = "MunicipalClip"
+
+# Grab the default workspace as a variable
+# WorkSpace = arcpy.env.workspace
+
+# Priority Function Calculation
+def TreePriority (JoinCount):
+    if JoinCount >= 7:
+        return "HIGH"
+    elif JoinCount >= 4 and JoinCount <= 6:
+        return "MEDIUM"
+    else:
+        return "LOW"
+
+
+# Select Large Forest Stands - Above or Equal to 4 hectares (Shape_Area)
+arcpy.analysis.Select(InForests, ForestSelect, "Shape_Area >= 40000")
+# Alternative Method - Feature Class to Feature Class
+# arcpy.conversion.FeatureClassToFeatureClass(InForests, WorkSpace, ForestSelect, "Shape_Area >= 40000")
+
+# Generating a Centroid Feature Class (Center Point of Each Polygon)
+arcpy.management.FeatureToPoint(ForestSelect, CenterPolygon, "CENTROID")
+
+# Generate 2KM Circles Around Centroids
+arcpy.analysis.Buffer(CenterPolygon, CentroidBuffer, "2 KILOMETERS")
+arcpy.management.FeatureToPolygon (CentroidBuffer, FlatPolygon)
+
+# Adds a Column to Track the ObjectID as a Unique Varible to Join Tables Later
+arcpy.management.AddField(FlatPolygon, "KEY", "LONG")
+myCursor = arcpy.da.UpdateCursor(FlatPolygon, ["OBJECTID", "KEY"])
+
+for row in myCursor:
+    row[1] = row[0]
+    myCursor.updateRow(row)
+
+myCursor = None
+
+arcpy.management.FeatureToPoint(FlatPolygon, CenterFlatPoint, "CENTROID")
+arcpy.analysis.SpatialJoin (CenterFlatPoint, CentroidBuffer, SpatialJoinPoint, "JOIN_ONE_TO_ONE", "KEEP_ALL", "COUNT", "INTERSECT")
+arcpy.management.JoinField (FlatPolygon, "Key", SpatialJoinPoint, "OBJECTID")
+
+# Remove 30m Zones Around All Roads and All Forests (Not Just The Large Forest Stands)
+arcpy.analysis.Erase (FlatPolygon, InForests, EraseFeature1)
+arcpy.analysis.Buffer(InRoads, RoadBuffer, "30 METERS")
+arcpy.analysis.Erase (EraseFeature1, RoadBuffer, EraseFeature2)
+
+# Classify the High/Medium/Low Areas - Use UpdateCursor
+arcpy.management.AddField(EraseFeature2, "TreePriority", "TEXT")
+myCursor = arcpy.da.UpdateCursor(EraseFeature2, ["Join_Count", "TreePriority"])
+
+for row in myCursor:
+    row[1] = TreePriority (row[0])
+    myCursor.updateRow(row)
+    
+myCursor = None 
+
+# Clipping to Municipal Boundaries
+arcpy.analysis.Clip (EraseFeature2, InMunicipalBnd, OutMunicipalBnd)
+
+# Adding Symbology
+arcpy.management.ApplySymbologyFromLayer (OutMunicipalBnd, InSymbology)
