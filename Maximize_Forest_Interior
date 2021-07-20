@@ -1,0 +1,93 @@
+#------------------------------------------------------
+# Program: Maximize_Forest_Interior
+# Author: Andy Chand
+# Version: 1.0
+# Date: Feb. 09, 2021
+# Purpose: Maximizing Forest Interior
+# Dependencies: arcpy, math
+#------------------------------------------------------
+
+import arcpy, math
+    
+InForests = "Forests"
+InRoads = "Roads"
+InMunicipalBnd = "MunicipalBnd"
+InSymbology = "MunicipalClip.lyrx"
+
+ForestCopy = "memory\\ForestCopy"
+BuffFeature = "memory\\ForestBuffed"
+CenterPolygon = "memory\\ForestPlotCentroid"
+PointBuffer = "memory\\ForestPointBuffer"
+CircleEraseBuffer = "memory\\ForestCentroidErased"
+CircleEraseBuffer_1 = "memory\\ForestRoadErased"
+Forest100BuffErased = "memory\\Forest100mBuffErased"
+EraseBuffer = "memory\\BufferErasedFeatures"
+EraseBuffer1 = "memory\\BufferErasedRoads"
+EraseBuffer2 = "memory\\BufferErasedHighPriority"
+RoadBuffer = "memory\\RoadBuffer"
+
+FinalPriority = "memory\\TreePriority"
+OutMunicipalBnd = "LondonClippedTrees"
+    
+# Radius calculation function
+def BufferRadius (PolygonArea):    
+    radius = math.sqrt(PolygonArea/math.pi)
+    return radius
+    
+# Make a copy of forest and generate 100 Metre on woodlots in watershed
+arcpy.analysis.Select(InForests, ForestCopy)
+arcpy.analysis.Buffer(ForestCopy, BuffFeature, "100 METER")
+arcpy.analysis.Buffer(InRoads, RoadBuffer, "30 METER")
+
+# Add fields to ForestCopy
+arcpy.management.AddField(ForestCopy, "RADIUS", "DOUBLE")
+arcpy.management.AddField(ForestCopy, "TreePriority", "TEXT")
+
+# Calculates the radius using the shape_area for each row
+myCursor = arcpy.da.UpdateCursor(ForestCopy, ["Shape_Area", "RADIUS"])
+
+for row in myCursor:
+    row[1] = BufferRadius (row[0])
+    myCursor.updateRow(row)
+    
+myCursor = None 
+
+# Generating a Centroid Feature Class (Center Point of Each Polygon)
+arcpy.management.FeatureToPoint(ForestCopy, CenterPolygon, "CENTROID")
+arcpy.analysis.Buffer(CenterPolygon, PointBuffer, "RADIUS")
+
+# Removing forests and roads from the intial centroid buffer and adding high priority
+arcpy.analysis.Erase(PointBuffer, ForestCopy, CircleEraseBuffer)
+arcpy.analysis.Erase(CircleEraseBuffer, RoadBuffer, CircleEraseBuffer_1)
+
+myCursor = arcpy.da.UpdateCursor(CircleEraseBuffer_1, ["TreePriority"])
+
+for row in myCursor:
+    row[0] = "HIGH"
+    myCursor.updateRow(row)
+    
+myCursor = None 
+
+# Removing forests and roads from the intial 100m buffer and adding medium priority
+arcpy.analysis.Erase(BuffFeature, ForestCopy, Forest100BuffErased)
+arcpy.analysis.Erase(Forest100BuffErased, ForestCopy, EraseBuffer)
+arcpy.analysis.Erase(EraseBuffer, RoadBuffer, EraseBuffer1)
+arcpy.analysis.Erase(EraseBuffer1, CircleEraseBuffer_1, EraseBuffer2)
+arcpy.management.AddField(EraseBuffer2, "TreePriority", "TEXT")
+
+myCursor = arcpy.da.UpdateCursor(EraseBuffer2, ["TreePriority"])
+
+for row in myCursor:
+    row[0] = "MEDIUM"
+    myCursor.updateRow(row)
+    
+myCursor = None 
+
+# Merging feature sets to have one table with tree priorities
+arcpy.management.Merge([CircleEraseBuffer_1, EraseBuffer2], FinalPriority)
+
+# Clipping to Municipal Boundaries
+arcpy.analysis.Clip (FinalPriority, InMunicipalBnd, OutMunicipalBnd)
+
+# Adding Symbology
+arcpy.management.ApplySymbologyFromLayer (OutMunicipalBnd, InSymbology)
